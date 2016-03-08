@@ -23,6 +23,11 @@ namespace Win32
             Handle = SetupDi.GetClassDevs(guid, enumerator, parent, flags);
         }
 
+        public DeviceInformationSet(Guid guid, DiGetClassFlags flags)
+            : this(guid, null, IntPtr.Zero, flags)
+        {
+        }
+
         public DeviceInformationSet(DiGetClassFlags flags)
             : this(null, IntPtr.Zero, flags)
         {
@@ -43,21 +48,30 @@ namespace Win32
             }
         }
 
-        public IEnumerable<DeviceInterface> Interfaces
+        public IEnumerable<DeviceInterface> GetInterfaces(Guid interfaceClassGuid)
         {
-            get
+            SP_DEVICE_INTERFACE_DATA interfaceData = new SP_DEVICE_INTERFACE_DATA();
+            interfaceData.cbSize = Marshal.SizeOf(interfaceData);
+            uint index = 0;
+            while (SetupDi.EnumDeviceInterfaces(Handle, ref interfaceClassGuid, index, ref interfaceData))
             {
-                SP_DEVICE_INTERFACE_DATA interfaceData = new SP_DEVICE_INTERFACE_DATA();
-                interfaceData.cbSize = Marshal.SizeOf(interfaceData);
-                uint index = 0;
-                while (SetupDi.EnumDeviceInterfaces(Handle, ref classGuid, index, ref interfaceData))
-                {
-                    yield return new DeviceInterface(this, interfaceData);
-                    index++;
-                }
+                yield return new DeviceInterface(this, interfaceData);
+                index++;
             }
         }
 
+        public IEnumerable<DeviceInterface> GetInterfaces(DeviceInformation device, Guid interfaceClassGuid)
+        {
+            SP_DEVICE_INTERFACE_DATA interfaceData = new SP_DEVICE_INTERFACE_DATA();
+            interfaceData.cbSize = Marshal.SizeOf(interfaceData);
+            uint index = 0;
+            var deviceInfo = device.DeviceInfo;
+            while (SetupDi.EnumDeviceInterfaces(Handle, ref deviceInfo, ref interfaceClassGuid, index, ref interfaceData))
+            {
+                yield return new DeviceInterface(this, interfaceData);
+                index++;
+            }
+        }
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 

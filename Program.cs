@@ -10,6 +10,9 @@ namespace setupdi
 {
     class Program
     {
+        static readonly Guid GUID_DEVINTERFACE_MODEM = new Guid("{2C7089AA-2E0E-11D1-B114-00C04FC2AAE4}");
+        static readonly Guid GUID_DEVINTERFACE_COMPORT = new Guid("{86E0D1E0-8089-11D0-9CE4-08003E301F73}");
+
         static void Main(string[] args)
         {
             var ret = Win32.SetupDi.GetClassDevs(
@@ -27,7 +30,7 @@ namespace setupdi
             }
 
             var ret2 = SetupDi.GetClassDevs(
-                new Guid("{53F56307-B6BF-11D0-94F2-00A0C91EFB8B}"), 
+                GUID_DEVINTERFACE_MODEM, 
                 null,
                 IntPtr.Zero, 
                 DiGetClassFlags.DIGCF_DEVICEINTERFACE);
@@ -41,7 +44,10 @@ namespace setupdi
             //PinvokeSample();
 
             var set1 = new DeviceInformationSet(DiGetClassFlags.DIGCF_ALLCLASSES);
-            var set2 = new DeviceInformationSet(new Guid("{53F56307-B6BF-11D0-94F2-00A0C91EFB8B}"), null, IntPtr.Zero, DiGetClassFlags.DIGCF_DEVICEINTERFACE);
+            var set2 = new DeviceInformationSet(GUID_DEVINTERFACE_MODEM, null, IntPtr.Zero, DiGetClassFlags.DIGCF_DEVICEINTERFACE | DiGetClassFlags.DIGCF_PRESENT);
+            var comports = new DeviceInformationSet(GUID_DEVINTERFACE_COMPORT, DiGetClassFlags.DIGCF_DEVICEINTERFACE | DiGetClassFlags.DIGCF_PRESENT).Devices;
+            var modems = new DeviceInformationSet(GUID_DEVINTERFACE_MODEM, DiGetClassFlags.DIGCF_DEVICEINTERFACE | DiGetClassFlags.DIGCF_PRESENT).Devices;
+            var modem_comports = comports.Where(port => port.GetInterface(GUID_DEVINTERFACE_MODEM) != null);
         }
 #if false
         static void PinvokeSample()
