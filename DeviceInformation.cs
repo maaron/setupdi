@@ -8,6 +8,22 @@ using Microsoft.Win32;
 
 namespace Win32
 {
+    [Flags]
+    public enum DeviceCapabilities : int
+    {
+        None              = 0x00000000,
+        LockSupported     = 0x00000001,
+        EjectSupported    = 0x00000002,
+        Removable         = 0x00000004,
+        DockDevice        = 0x00000008,
+        UniqueId          = 0x00000010,
+        SilentInstall     = 0x00000020,
+        RawDeviceOk       = 0x00000040,
+        SurpriseRemovalOk = 0x00000080,
+        HarwareDisabled   = 0x00000100,
+        NonDynamic        = 0x00000200
+    }
+
     public class DeviceInformation
     {
         private DeviceInformationSet deviceInfoSet;
@@ -184,6 +200,145 @@ namespace Win32
                 DiGetClassFlags.DIGCF_DEVICEINTERFACE);
 
             return infoSet.GetInterfaces(interfaceClassGuid).FirstOrDefault();
+        }
+
+        private Nullable<T> GetRegistryProperty<T>(RegistryProperty property, RegistryValueKind expectedValueKind) where T : struct
+        {
+            int requiredSize = 0;
+            RegistryValueKind valueKind;
+            var size = Marshal.SizeOf(typeof(T));
+            var buffer = Marshal.AllocHGlobal(size);
+
+            try
+            {
+                var result = SetupDi.GetDeviceRegistryProperty(
+                    deviceInfoSet.Handle,
+                    deviceInfo,
+                    property,
+                    out valueKind,
+                    buffer,
+                    size,
+                    out requiredSize);
+
+                if (!result) return null;
+
+                return (T)Marshal.PtrToStructure(buffer, typeof(T));
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        private byte[] GetRegistryProperty(RegistryProperty property, RegistryValueKind expectedValueKind)
+        {
+            int requiredSize = 0;
+            RegistryValueKind valueKind;
+            byte[] buffer;
+
+            var result = SetupDi.GetDeviceRegistryProperty(
+                deviceInfoSet.Handle,
+                deviceInfo,
+                property,
+                out valueKind,
+                IntPtr.Zero,
+                0,
+                out requiredSize);
+
+            if (result || Marshal.GetLastWin32Error() != SetupDi.ERROR_INSUFFICIENT_BUFFER)
+            {
+                return null;
+            }
+
+            buffer = new byte[requiredSize];
+
+            result = SetupDi.GetDeviceRegistryProperty(
+                deviceInfoSet.Handle,
+                deviceInfo,
+                property,
+                out valueKind,
+                buffer,
+                requiredSize,
+                out requiredSize);
+
+            if (!result) return null;
+
+            return buffer;
+        }
+
+        private string GetStringProperty(RegistryProperty property)
+        {
+            var value = GetRegistryProperty(
+                    property,
+                    RegistryValueKind.String);
+
+            return value == null ? (string)null
+                : Marshal.SystemDefaultCharSize == 2 ? Encoding.Unicode.GetString(value, 0, value.Length - 2)
+                : Encoding.ASCII.GetString(value, 0, value.Length - 1);
+        }
+
+        public Nullable<uint> Address
+        {
+            get
+            {
+                return GetRegistryProperty<UInt32>(
+                    RegistryProperty.SPDRP_ADDRESS, 
+                    RegistryValueKind.DWord);
+            }
+        }
+
+        public Nullable<uint> BusNumber
+        {
+            get
+            {
+                return GetRegistryProperty<UInt32>(
+                    RegistryProperty.SPDRP_BUSNUMBER,
+                    RegistryValueKind.DWord);
+            }
+        }
+
+        public Nullable<Guid> BusTypeGuid
+        {
+            get
+            {
+                return GetRegistryProperty<Guid>(
+                    RegistryProperty.SPDRP_BUSTYPEGUID, 
+                    RegistryValueKind.Binary);
+            }
+        }
+
+        public Nullable<DeviceCapabilities> Capabilities
+        {
+            get
+            {
+                return (DeviceCapabilities)GetRegistryProperty<int>(
+                    RegistryProperty.SPDRP_CAPABILITIES,
+                    RegistryValueKind.DWord);
+            }
+        }
+
+        public string Description
+        {
+            get
+            {
+                return GetStringProperty(RegistryProperty.SPDRP_DEVICEDESC);
+            }
+        }
+
+        public string Manufacturer
+        {
+            get
+            {
+                return GetStringProperty(RegistryProperty.SPDRP_MFG);
+            }
+        }
+
+        public string FriendlyName
+        {
+            get
+            {
+                return GetStringProperty(RegistryProperty.SPDRP_FRIENDLYNAME);
+            }
         }
     }
 }
