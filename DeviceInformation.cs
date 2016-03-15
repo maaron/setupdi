@@ -2,11 +2,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
-namespace Win32
+namespace Win32.Devices
 {
     public class DeviceInformation
     {
@@ -60,7 +59,7 @@ namespace Win32
                 int requiredCount = 0;
                 if (!SetupDi.GetDevicePropertyKeys(
                     deviceInfoSet.Handle, 
-                    ref deviceInfo, 
+                    deviceInfo, 
                     null, 0, 
                     ref requiredCount, 0) && Marshal.GetLastWin32Error() != SetupDi.ERROR_INSUFFICIENT_BUFFER)
                 {
@@ -70,7 +69,7 @@ namespace Win32
                 var keys = new DEVPROPKEY[requiredCount];
                 if (!SetupDi.GetDevicePropertyKeys(
                     deviceInfoSet.Handle,
-                    ref deviceInfo,
+                    deviceInfo,
                     keys, keys.Length,
                     ref requiredCount, 0))
                 {
@@ -121,7 +120,7 @@ namespace Win32
             {
                 var hkey = SetupDi.OpenDevRegKey(
                         deviceInfoSet.Handle,
-                        ref deviceInfo,
+                        deviceInfo,
                         DicsFlag.DICS_FLAG_GLOBAL,
                         0,
                         DiKeyType.DREG_DEV,

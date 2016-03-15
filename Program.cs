@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using Win32;
 
-namespace setupdi
+namespace Win32.Devices
 {
     class Program
     {
@@ -15,7 +15,7 @@ namespace setupdi
 
         static void Main(string[] args)
         {
-            var ret = Win32.SetupDi.GetClassDevs(
+            var ret = SetupDi.GetClassDevs(
                 null, IntPtr.Zero, 
                 DiGetClassFlags.DIGCF_ALLCLASSES);
 

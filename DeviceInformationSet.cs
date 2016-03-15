@@ -2,10 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 
-namespace Win32
+namespace Win32.Devices
 {
     public class DeviceInformationSet : IDisposable
     {
@@ -53,7 +52,7 @@ namespace Win32
             SP_DEVICE_INTERFACE_DATA interfaceData = new SP_DEVICE_INTERFACE_DATA();
             interfaceData.cbSize = Marshal.SizeOf(interfaceData);
             uint index = 0;
-            while (SetupDi.EnumDeviceInterfaces(Handle, ref interfaceClassGuid, index, ref interfaceData))
+            while (SetupDi.EnumDeviceInterfaces(Handle, interfaceClassGuid, index, ref interfaceData))
             {
                 yield return new DeviceInterface(this, interfaceData);
                 index++;
@@ -66,7 +65,7 @@ namespace Win32
             interfaceData.cbSize = Marshal.SizeOf(interfaceData);
             uint index = 0;
             var deviceInfo = device.DeviceInfo;
-            while (SetupDi.EnumDeviceInterfaces(Handle, ref deviceInfo, ref interfaceClassGuid, index, ref interfaceData))
+            while (SetupDi.EnumDeviceInterfaces(Handle, deviceInfo, interfaceClassGuid, index, ref interfaceData))
             {
                 yield return new DeviceInterface(this, interfaceData);
                 index++;

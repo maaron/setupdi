@@ -2,10 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 
-namespace Win32
+namespace Win32.Devices
 {
     [Flags]
     public enum DiGetClassFlags : uint
@@ -100,7 +99,10 @@ namespace Win32
         [DllImport("setupapi.dll", SetLastError = true)]
         static extern bool SetupDiEnumDeviceInfo(IntPtr DeviceInfoSet, uint MemberIndex, ref SP_DEVINFO_DATA DeviceInfoData);
 
-        public static bool EnumDeviceInfo(IntPtr deviceInfoSet, uint MemberIndex, ref SP_DEVINFO_DATA DeviceInfoData)
+        public static bool EnumDeviceInfo(
+            IntPtr deviceInfoSet, 
+            uint MemberIndex, 
+            ref SP_DEVINFO_DATA DeviceInfoData)
         {
             return SetupDiEnumDeviceInfo(deviceInfoSet, MemberIndex, ref DeviceInfoData);
         }
@@ -116,8 +118,8 @@ namespace Win32
 
         public static bool EnumDeviceInterfaces(
             IntPtr hdevInfo, 
-            ref SP_DEVINFO_DATA devInfo, 
-            ref Guid interfaceClassGuid,
+            SP_DEVINFO_DATA devInfo, 
+            Guid interfaceClassGuid,
             UInt32 memberIndex,
             ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData)
         {
@@ -135,7 +137,7 @@ namespace Win32
 
         public static bool EnumDeviceInterfaces(
             IntPtr hdevInfo,
-            ref Guid interfaceClassGuid,
+            Guid interfaceClassGuid,
             UInt32 memberIndex,
             ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData)
         {
@@ -161,7 +163,7 @@ namespace Win32
 
         public static bool GetDevicePropertyKeys(
             IntPtr DeviceInfoSet,
-            ref SP_DEVINFO_DATA DeviceInfoData,
+            SP_DEVINFO_DATA DeviceInfoData,
             DEVPROPKEY[] PropertyKeyArray,
             int PropertyKeyCount,
             ref int RequiredPropertyKeyCount,
@@ -181,7 +183,7 @@ namespace Win32
 
         public static IntPtr OpenDevRegKey(
             IntPtr hDeviceInfoSet,
-            ref SP_DEVINFO_DATA deviceInfoData,
+            SP_DEVINFO_DATA deviceInfoData,
             DicsFlag scope,
             int hwProfile,
             DiKeyType parameterRegistryValueKind,

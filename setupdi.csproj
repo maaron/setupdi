@@ -49,7 +49,6 @@
     <Compile Include="DeviceInterface.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="PropertyKey.cs" />
     <Compile Include="SetupDi.cs" />
   </ItemGroup>
   <ItemGroup>
