@@ -5,7 +5,7 @@ using System.Text;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
-namespace Win32.Devices
+namespace Win32
 {
     [Flags]
     public enum DeviceCapabilities : int
@@ -25,7 +25,7 @@ namespace Win32.Devices
 
     public class DeviceInformation
     {
-        private DeviceInformationSet deviceInfoSet;
+        public DeviceInformationSet DeviceInformationSet { get; }
         private SP_DEVINFO_DATA deviceInfo;
 
         public SP_DEVINFO_DATA DeviceInfo { get { return deviceInfo; } }
@@ -36,7 +36,7 @@ namespace Win32.Devices
 
         public DeviceInformation(DeviceInformationSet deviceInfoSet, SP_DEVINFO_DATA deviceInfo)
         {
-            this.deviceInfoSet = deviceInfoSet;
+            DeviceInformationSet = deviceInfoSet;
             this.deviceInfo = deviceInfo;
             ClassGuid = deviceInfo.classGuid;
             DeviceInstance = deviceInfo.devInst;
@@ -48,7 +48,7 @@ namespace Win32.Devices
             {
                 int requiredSize = 0;
                 var ret = SetupDi.GetDeviceInstanceId(
-                    deviceInfoSet.Handle, deviceInfo, null, 0, out requiredSize);
+                    DeviceInformationSet.HDevInfo, deviceInfo, null, 0, out requiredSize);
                 
                 if (ret || Marshal.GetLastWin32Error() != SetupDi.ERROR_INSUFFICIENT_BUFFER)
                 {
@@ -57,7 +57,7 @@ namespace Win32.Devices
 
                 var sb = new StringBuilder(requiredSize + 1);
                 ret = SetupDi.GetDeviceInstanceId(
-                    deviceInfoSet.Handle, deviceInfo, sb, requiredSize, out requiredSize);
+                    DeviceInformationSet.HDevInfo, deviceInfo, sb, requiredSize, out requiredSize);
 
                 if (!ret)
                 {
@@ -68,13 +68,26 @@ namespace Win32.Devices
             }
         }
 
+        public IEnumerable<DeviceInterface> GetInterfaces(Guid interfaceClassGuid)
+        {
+            SP_DEVICE_INTERFACE_DATA interfaceData = new SP_DEVICE_INTERFACE_DATA();
+            interfaceData.cbSize = Marshal.SizeOf(interfaceData);
+            uint index = 0;
+
+            while (SetupDi.EnumDeviceInterfaces(DeviceInformationSet.HDevInfo, deviceInfo, interfaceClassGuid, index, ref interfaceData))
+            {
+                yield return new DeviceInterface(DeviceInformationSet, interfaceData);
+                index++;
+            }
+        }
+
         public DEVPROPKEY[] PropertyKeys
         {
             get
             {
                 int requiredCount = 0;
                 if (!SetupDi.GetDevicePropertyKeys(
-                    deviceInfoSet.Handle, 
+                    DeviceInformationSet.HDevInfo, 
                     deviceInfo, 
                     null, 0, 
                     ref requiredCount, 0) && Marshal.GetLastWin32Error() != SetupDi.ERROR_INSUFFICIENT_BUFFER)
@@ -84,7 +97,7 @@ namespace Win32.Devices
 
                 var keys = new DEVPROPKEY[requiredCount];
                 if (!SetupDi.GetDevicePropertyKeys(
-                    deviceInfoSet.Handle,
+                    DeviceInformationSet.HDevInfo,
                     deviceInfo,
                     keys, keys.Length,
                     ref requiredCount, 0))
@@ -96,27 +109,9 @@ namespace Win32.Devices
             }
         }
 
-        private Microsoft.Win32.RegistryKey KeyFromHandle(IntPtr handle)
+        private Microsoft.Win32.RegistryKey KeyFromHandle(HKey handle)
         {
-            int length = 0;
-            Console.WriteLine("handle = " + handle.ToInt64());
-            var ret = SetupDi.NtQueryKey(handle, KeyInformationClass.KeyNameInformation, (byte[])null, 0, ref length);
-            if (ret != SetupDi.STATUS_BUFFER_TOO_SMALL)
-            {
-                throw new Exception(String.Format(
-                    "NtQueryKey({0}, {1}, {2}, {3}, {4}) failed: {5}",
-                    handle.ToInt64(), KeyInformationClass.KeyNameInformation, "null", 0, length, ret));
-            }
-
-            var keyInformation = new byte[length];
-            ret = SetupDi.NtQueryKey(handle, KeyInformationClass.KeyNameInformation, keyInformation, length, ref length);
-            if (ret != SetupDi.STATUS_SUCCESS)
-            {
-                throw new Exception("NtQueryKey(2) failed: " + ret);
-            }
-
-            // first four bytes is length, followed by utf-16 string
-            var name = Encoding.Unicode.GetString(keyInformation, 4, keyInformation.Length - 4);
+            var name = Nt.QueryKeyNameInformation(handle);
 
             // First portion should start with a prefix that will be replaced 
             // by the Registry.LocalMachine key
@@ -134,27 +129,15 @@ namespace Win32.Devices
         {
             get
             {
-                var hkey = SetupDi.OpenDevRegKey(
-                        deviceInfoSet.Handle,
+                using (var hkey = SetupDi.OpenDevRegKey(
+                        DeviceInformationSet.HDevInfo,
                         deviceInfo,
                         DicsFlag.DICS_FLAG_GLOBAL,
                         0,
                         DiKeyType.DREG_DEV,
-                        RegSam.KEU_QUERY_VALUE);
-
-                if (hkey == IntPtr.Zero) return null;
-
-                try
+                        RegSam.KEU_QUERY_VALUE))
                 {
                     return KeyFromHandle(hkey);
-                }
-                catch (Exception)
-                {
-                    return null;
-                }
-                finally
-                {
-                    SetupDi.RegCloseKey(hkey);
                 }
             }
         }
@@ -190,18 +173,7 @@ namespace Win32.Devices
             }
         }
 #endif
-        public DeviceInterface GetInterface(Guid interfaceClassGuid)
-        {
-            var infoSet = new DeviceInformationSet(
-                interfaceClassGuid,
-                InstanceId,
-                IntPtr.Zero,
-                DiGetClassFlags.DIGCF_DEVICEINTERFACE);
-
-            return infoSet.GetInterfaces(interfaceClassGuid).FirstOrDefault();
-        }
-
-        private Nullable<T> GetRegistryProperty<T>(RegistryProperty property, RegistryValueKind expectedValueKind) where T : struct
+        private T? GetRegistryProperty<T>(RegistryProperty property, RegistryValueKind expectedValueKind) where T : struct
         {
             int requiredSize = 0;
             RegistryValueKind valueKind;
@@ -211,7 +183,7 @@ namespace Win32.Devices
             try
             {
                 var result = SetupDi.GetDeviceRegistryProperty(
-                    deviceInfoSet.Handle,
+                    DeviceInformationSet.HDevInfo,
                     deviceInfo,
                     property,
                     out valueKind,
@@ -236,7 +208,7 @@ namespace Win32.Devices
             byte[] buffer;
 
             var result = SetupDi.GetDeviceRegistryProperty(
-                deviceInfoSet.Handle,
+                DeviceInformationSet.HDevInfo,
                 deviceInfo,
                 property,
                 out valueKind,
@@ -252,7 +224,7 @@ namespace Win32.Devices
             buffer = new byte[requiredSize];
 
             result = SetupDi.GetDeviceRegistryProperty(
-                deviceInfoSet.Handle,
+                DeviceInformationSet.HDevInfo,
                 deviceInfo,
                 property,
                 out valueKind,
@@ -276,7 +248,7 @@ namespace Win32.Devices
                 : Encoding.ASCII.GetString(value, 0, value.Length - 1);
         }
 
-        public Nullable<uint> Address
+        public uint? Address
         {
             get
             {
@@ -286,7 +258,7 @@ namespace Win32.Devices
             }
         }
 
-        public Nullable<uint> BusNumber
+        public uint? BusNumber
         {
             get
             {
@@ -296,7 +268,7 @@ namespace Win32.Devices
             }
         }
 
-        public Nullable<Guid> BusTypeGuid
+        public Guid? BusTypeGuid
         {
             get
             {
@@ -306,7 +278,7 @@ namespace Win32.Devices
             }
         }
 
-        public Nullable<DeviceCapabilities> Capabilities
+        public DeviceCapabilities? Capabilities
         {
             get
             {

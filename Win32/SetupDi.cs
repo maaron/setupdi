@@ -4,8 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using System.ComponentModel;
 
-namespace Win32.Devices
+namespace Win32
 {
     [Flags]
     public enum DiGetClassFlags : uint
@@ -36,34 +37,21 @@ namespace Win32.Devices
         KEU_QUERY_VALUE = 1
     }
 
-    public enum KeyInformationClass : int
-    {
-        KeyBasicInformation = 0,
-        KeyNodeInformation = 1,
-        KeyFullInformation = 2,
-        KeyNameInformation = 3,
-        KeyCachedInformation = 4,
-        KeyFlagsInformation = 5,
-        KeyVirtualizationInformation = 6,
-        KeyHandleTagsInformation = 7,
-        MaxKeyInfoClass = 8
-    }
-
     [StructLayout(LayoutKind.Sequential)]
     public struct SP_DEVINFO_DATA
     {
-        public Int32 cbSize;
+        public int cbSize;
         public Guid classGuid;
         public uint devInst;
-        public IntPtr reserved;
+        public int reserved;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct SP_DEVICE_INTERFACE_DATA
     {
-        public Int32 cbSize;
+        public int cbSize;
         public Guid interfaceClassGuid;
-        public Int32 flags;
+        public int flags;
         private UIntPtr reserved;
     }
 
@@ -73,6 +61,13 @@ namespace Win32.Devices
         Guid fmtid;
         Int32 pid;
     };
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct SP_DEVICE_INTERFACE_DETAIL_DATA
+    {
+        public int cbSize;
+        public char devicePath;
+    }
 
     public enum RegistryProperty : uint
     {
@@ -115,6 +110,26 @@ namespace Win32.Devices
         SPDRP_BASE_CONTAINERID = 0x00000024  // Base ContainerID (R)
     }
 
+    public struct HDevInfo
+    {
+        public IntPtr IntPtr { get; }
+
+        public HDevInfo(IntPtr intPtr)
+        {
+            IntPtr = intPtr;
+        }
+    }
+
+    public struct HWnd
+    {
+        public IntPtr IntPtr { get; }
+
+        public HWnd(IntPtr intPtr)
+        {
+            IntPtr = intPtr;
+        }
+    }
+
     public class SetupDi
     {
         public const int ERROR_INSUFFICIENT_BUFFER = 122;
@@ -123,35 +138,57 @@ namespace Win32.Devices
         public const uint STATUS_SUCCESS = 0x00000000;
         public const uint STATUS_BUFFER_TOO_SMALL = 0xC0000023;
 
-        [DllImport("setupapi.dll", CharSet = CharSet.Auto)]
-        public static extern IntPtr SetupDiGetClassDevs(IntPtr guid, string enumerator, IntPtr parent, DiGetClassFlags flags);
+        [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetupDiGetClassDevs(IntPtr guid, string enumerator, IntPtr parent, DiGetClassFlags flags);
 
-        [DllImport("setupapi.dll", CharSet = CharSet.Auto)]
-        public static extern IntPtr SetupDiGetClassDevs(ref Guid guid, string enumerator, IntPtr parent, DiGetClassFlags flags);
+        [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetupDiGetClassDevs(ref Guid guid, string enumerator, IntPtr parent, DiGetClassFlags flags);
 
-        public static IntPtr GetClassDevs(string enumerator, IntPtr parent, DiGetClassFlags flags)
+        private static void ThrowOnFalse(bool b)
         {
-            return SetupDiGetClassDevs(IntPtr.Zero, enumerator, parent, flags);
+            if (!b) throw new Win32Exception();
         }
 
-        public static IntPtr GetClassDevs(Guid guid, string enumerator, IntPtr parent, DiGetClassFlags flags)
+        private static IntPtr ThrowOnNull(IntPtr value)
         {
-            return SetupDiGetClassDevs(ref guid, enumerator, parent, flags);
+            if (value == IntPtr.Zero)
+            {
+                throw new Win32Exception();
+            }
+            return value;
         }
 
-        [DllImport("setupapi.dll", SetLastError = true)]
-        static extern bool SetupDiEnumDeviceInfo(IntPtr DeviceInfoSet, uint MemberIndex, ref SP_DEVINFO_DATA DeviceInfoData);
+        public static HDevInfo GetClassDevs(Guid? guid, string enumerator, HWnd? parent, DiGetClassFlags flags)
+        {
+            IntPtr ptr;
+            var parentPtr = parent.HasValue ? parent.Value.IntPtr : IntPtr.Zero;
+
+            if (guid.HasValue)
+            {
+                Guid tmpGuid = guid.Value;
+                ptr = SetupDiGetClassDevs(ref tmpGuid, enumerator, parentPtr, flags);
+            }
+            else
+            {
+                ptr = SetupDiGetClassDevs(IntPtr.Zero, enumerator, parentPtr, flags);
+            }
+
+            return new HDevInfo(ThrowOnNull(ptr));
+        }
+
+        [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool SetupDiEnumDeviceInfo(IntPtr DeviceInfoSet, uint MemberIndex, ref SP_DEVINFO_DATA DeviceInfoData);
 
         public static bool EnumDeviceInfo(
-            IntPtr deviceInfoSet, 
+            HDevInfo deviceInfoSet, 
             uint MemberIndex, 
             ref SP_DEVINFO_DATA DeviceInfoData)
         {
-            return SetupDiEnumDeviceInfo(deviceInfoSet, MemberIndex, ref DeviceInfoData);
+            return SetupDiEnumDeviceInfo(deviceInfoSet.IntPtr, MemberIndex, ref DeviceInfoData);
         }
 
         [DllImport(@"setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        public static extern Boolean SetupDiEnumDeviceInterfaces(
+        private static extern Boolean SetupDiEnumDeviceInterfaces(
            IntPtr hDevInfo,
            ref SP_DEVINFO_DATA devInfo,
            ref Guid interfaceClassGuid,
@@ -160,17 +197,17 @@ namespace Win32.Devices
         );
 
         public static bool EnumDeviceInterfaces(
-            IntPtr hdevInfo, 
+            HDevInfo hdevInfo, 
             SP_DEVINFO_DATA devInfo, 
             Guid interfaceClassGuid,
             UInt32 memberIndex,
             ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData)
         {
-            return SetupDiEnumDeviceInterfaces(hdevInfo, ref devInfo, ref interfaceClassGuid, memberIndex, ref deviceInterfaceData);
+            return SetupDiEnumDeviceInterfaces(hdevInfo.IntPtr, ref devInfo, ref interfaceClassGuid, memberIndex, ref deviceInterfaceData);
         }
 
         [DllImport(@"setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        public static extern Boolean SetupDiEnumDeviceInterfaces(
+        private static extern Boolean SetupDiEnumDeviceInterfaces(
            IntPtr hDevInfo,
            IntPtr devInfo,
            ref Guid interfaceClassGuid,
@@ -179,24 +216,24 @@ namespace Win32.Devices
         );
 
         public static bool EnumDeviceInterfaces(
-            IntPtr hdevInfo,
+            HDevInfo hdevInfo,
             Guid interfaceClassGuid,
             UInt32 memberIndex,
             ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData)
         {
-            return SetupDiEnumDeviceInterfaces(hdevInfo, IntPtr.Zero, ref interfaceClassGuid, memberIndex, ref deviceInterfaceData);
+            return SetupDiEnumDeviceInterfaces(hdevInfo.IntPtr, IntPtr.Zero, ref interfaceClassGuid, memberIndex, ref deviceInterfaceData);
         }
 
-        [DllImport("setupapi.dll", SetLastError = true)]
-        public static extern bool SetupDiDestroyDeviceInfoList(IntPtr DeviceInfoSet);
+        [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool SetupDiDestroyDeviceInfoList(IntPtr DeviceInfoSet);
 
-        public static bool DestroyDeviceInfoList(IntPtr DeviceInfoSet)
+        public static bool DestroyDeviceInfoList(HDevInfo DeviceInfoSet)
         {
-            return SetupDiDestroyDeviceInfoList(DeviceInfoSet);
+            return SetupDiDestroyDeviceInfoList(DeviceInfoSet.IntPtr);
         }
 
-        [DllImport("setupapi.dll", SetLastError = true)]
-        public static extern bool SetupDiGetDevicePropertyKeys(
+        [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool SetupDiGetDevicePropertyKeys(
             IntPtr DeviceInfoSet,
             ref SP_DEVINFO_DATA DeviceInfoData,
             [In, Out] DEVPROPKEY[] PropertyKeyArray,
@@ -205,48 +242,43 @@ namespace Win32.Devices
             int Flags);
 
         public static bool GetDevicePropertyKeys(
-            IntPtr DeviceInfoSet,
-            SP_DEVINFO_DATA DeviceInfoData,
-            DEVPROPKEY[] PropertyKeyArray,
-            int PropertyKeyCount,
-            ref int RequiredPropertyKeyCount,
-            int Flags)
+            HDevInfo deviceInfoSet,
+            SP_DEVINFO_DATA deviceInfoData,
+            DEVPROPKEY[] propertyKeyArray,
+            int propertyKeyCount,
+            ref int requiredPropertyKeyCount,
+            int flags)
         {
-            return SetupDiGetDevicePropertyKeys(DeviceInfoSet, ref DeviceInfoData, PropertyKeyArray, PropertyKeyCount, ref RequiredPropertyKeyCount, Flags);
+            return SetupDiGetDevicePropertyKeys(deviceInfoSet.IntPtr, ref deviceInfoData, propertyKeyArray, propertyKeyCount, ref requiredPropertyKeyCount, flags);
         }
 
-        [DllImport("Setupapi", CharSet = CharSet.Auto, SetLastError = true)]
-        public static extern IntPtr SetupDiOpenDevRegKey(
-            IntPtr hDeviceInfoSet,
+        [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetupDiOpenDevRegKey(
+            IntPtr deviceInfoSet,
             ref SP_DEVINFO_DATA deviceInfoData,
             DicsFlag scope,
             int hwProfile,
             DiKeyType parameterRegistryValueKind,
             RegSam samDesired);
 
-        public static IntPtr OpenDevRegKey(
-            IntPtr hDeviceInfoSet,
+        public static HKey OpenDevRegKey(
+            HDevInfo deviceInfoSet,
             SP_DEVINFO_DATA deviceInfoData,
             DicsFlag scope,
             int hwProfile,
             DiKeyType parameterRegistryValueKind,
             RegSam samDesired)
         {
-            return SetupDiOpenDevRegKey(hDeviceInfoSet, ref deviceInfoData, scope, hwProfile, parameterRegistryValueKind, samDesired);
+            return new HKey(ThrowOnNull(SetupDiOpenDevRegKey(
+                deviceInfoSet.IntPtr, 
+                ref deviceInfoData, 
+                scope, 
+                hwProfile, 
+                parameterRegistryValueKind, 
+                samDesired)));
         }
 
-        [DllImport("ntdll.dll", CharSet = CharSet.Auto)]
-        public static extern uint NtQueryKey(
-            IntPtr KeyHandle,
-            KeyInformationClass keyInformationClass,
-            byte[] KeyInformation,
-            int Length,
-            ref int ResultLength);
-
-        [DllImport("advapi32.dll", CharSet = CharSet.Auto)]
-        public static extern uint RegCloseKey(IntPtr hKey);
-
-        [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
         public static extern bool SetupDiGetDeviceInstanceId(
            IntPtr DeviceInfoSet,
            ref SP_DEVINFO_DATA DeviceInfoData,
@@ -255,17 +287,17 @@ namespace Win32.Devices
            out int RequiredSize);
 
         public static bool GetDeviceInstanceId(
-           IntPtr DeviceInfoSet,
-           SP_DEVINFO_DATA DeviceInfoData,
-           StringBuilder DeviceInstanceId,
-           int DeviceInstanceIdSize,
-           out int RequiredSize)
+           HDevInfo deviceInfoSet,
+           SP_DEVINFO_DATA deviceInfoData,
+           StringBuilder deviceInstanceId,
+           int deviceInstanceIdSize,
+           out int requiredSize)
         {
-            return SetupDiGetDeviceInstanceId(DeviceInfoSet, ref DeviceInfoData, DeviceInstanceId, DeviceInstanceIdSize, out RequiredSize);
+            return SetupDiGetDeviceInstanceId(deviceInfoSet.IntPtr, ref deviceInfoData, deviceInstanceId, deviceInstanceIdSize, out requiredSize);
         }
 
         [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        public static extern bool SetupDiGetDeviceRegistryProperty(
+        private static extern bool SetupDiGetDeviceRegistryProperty(
             IntPtr deviceInfoSet,
             ref SP_DEVINFO_DATA deviceInfoData,
             RegistryProperty property,
@@ -275,7 +307,7 @@ namespace Win32.Devices
             out int requiredSize);
 
         [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        public static extern bool SetupDiGetDeviceRegistryProperty(
+        private static extern bool SetupDiGetDeviceRegistryProperty(
             IntPtr deviceInfoSet,
             ref SP_DEVINFO_DATA deviceInfoData,
             RegistryProperty property,
@@ -283,6 +315,58 @@ namespace Win32.Devices
             byte[] propertyBuffer,
             int propertyBufferSize,
             out int requiredSize);
+
+        [DllImport(@"setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool SetupDiGetDeviceInterfaceDetail(
+            IntPtr hDevInfo,
+            ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData,
+            IntPtr deviceInterfaceDetailData,
+            uint deviceInterfaceDetailDataSize,
+            ref uint requiredSize,
+            IntPtr deviceInfoData);
+
+        public static string GetDevicePath(HDevInfo deviceInfoSet, SP_DEVICE_INTERFACE_DATA deviceInterfaceData)
+        {
+            uint size = 0;
+            uint requiredSize = 0;
+
+            if (SetupDiGetDeviceInterfaceDetail(
+                deviceInfoSet.IntPtr,
+                ref deviceInterfaceData,
+                IntPtr.Zero,
+                size,
+                ref requiredSize,
+                IntPtr.Zero))
+                return "";
+
+            int error = Marshal.GetLastWin32Error();
+
+            if (error != ERROR_INSUFFICIENT_BUFFER)
+            {
+                throw new Win32Exception(error);
+            }
+
+            var detailData = Marshal.AllocHGlobal((int)requiredSize);
+            try
+            {
+                Marshal.WriteInt32(detailData, 0, 6);
+
+                ThrowOnFalse(
+                    SetupDiGetDeviceInterfaceDetail(
+                        deviceInfoSet.IntPtr,
+                        ref deviceInterfaceData,
+                        detailData,
+                        requiredSize,
+                        ref requiredSize,
+                        IntPtr.Zero));
+
+                return Marshal.PtrToStringUni(detailData + 4);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(detailData);
+            }
+        }
 
         private static Microsoft.Win32.RegistryValueKind MapValueKind(uint valueKind)
         {
@@ -299,7 +383,7 @@ namespace Win32.Devices
         }
 
         public static bool GetDeviceRegistryProperty(
-            IntPtr deviceInfoSet,
+            HDevInfo deviceInfoSet,
             SP_DEVINFO_DATA deviceInfoData,
             RegistryProperty property,
             out Microsoft.Win32.RegistryValueKind propertyRegDataType,
@@ -310,7 +394,7 @@ namespace Win32.Devices
             uint valueType = 0;
 
             var result = SetupDiGetDeviceRegistryProperty(
-                deviceInfoSet, 
+                deviceInfoSet.IntPtr, 
                 ref deviceInfoData, 
                 property, 
                 out valueType, 
@@ -324,7 +408,7 @@ namespace Win32.Devices
         }
 
         public static bool GetDeviceRegistryProperty(
-            IntPtr deviceInfoSet,
+            HDevInfo deviceInfoSet,
             SP_DEVINFO_DATA deviceInfoData,
             RegistryProperty property,
             out Microsoft.Win32.RegistryValueKind propertyRegDataType,
@@ -335,7 +419,7 @@ namespace Win32.Devices
             uint valueType = 0;
 
             var result = SetupDiGetDeviceRegistryProperty(
-                deviceInfoSet,
+                deviceInfoSet.IntPtr,
                 ref deviceInfoData,
                 property,
                 out valueType,

@@ -12,42 +12,21 @@ namespace Win32.Devices
     {
         static readonly Guid GUID_DEVINTERFACE_MODEM = new Guid("{2C7089AA-2E0E-11D1-B114-00C04FC2AAE4}");
         static readonly Guid GUID_DEVINTERFACE_COMPORT = new Guid("{86E0D1E0-8089-11D0-9CE4-08003E301F73}");
+        static readonly Guid EmeraldGuid = new Guid("85B71DDD-D042-4442-952e-6fcc794dc096");
 
         static void Main(string[] args)
         {
-            var ret = SetupDi.GetClassDevs(
-                null, IntPtr.Zero, 
-                DiGetClassFlags.DIGCF_ALLCLASSES);
+            var emeraldDis = new DeviceInformationSet(EmeraldGuid, DiGetClassFlags.DIGCF_DEVICEINTERFACE);
+            var interfaces = emeraldDis.GetInterfaces(EmeraldGuid).ToList();
+            var paths = interfaces.Select(i => i.Path).ToList();
 
-            if (ret == IntPtr.Zero) throw new Exception("GetClassDevs failed");
-
-            SP_DEVINFO_DATA deviceInfo = new SP_DEVINFO_DATA();
-            deviceInfo.cbSize = Marshal.SizeOf(deviceInfo);
-            uint index = 0;
-            while (SetupDi.EnumDeviceInfo(ret, index, ref deviceInfo))
-            {
-                index++;
-            }
-
-            var ret2 = SetupDi.GetClassDevs(
-                GUID_DEVINTERFACE_MODEM, 
-                null,
-                IntPtr.Zero, 
-                DiGetClassFlags.DIGCF_DEVICEINTERFACE);
-
-            index = 0;
-            while (SetupDi.EnumDeviceInfo(ret2, index, ref deviceInfo))
-            {
-                index++;
-            }
-
-            //PinvokeSample();
+            var deviceInterfaces = emeraldDis.Devices.First().GetInterfaces(EmeraldGuid).ToList();
 
             var set1 = new DeviceInformationSet(DiGetClassFlags.DIGCF_ALLCLASSES);
-            var set2 = new DeviceInformationSet(GUID_DEVINTERFACE_MODEM, null, IntPtr.Zero, DiGetClassFlags.DIGCF_DEVICEINTERFACE | DiGetClassFlags.DIGCF_PRESENT);
+            var set2 = new DeviceInformationSet(GUID_DEVINTERFACE_MODEM, null, null, DiGetClassFlags.DIGCF_DEVICEINTERFACE | DiGetClassFlags.DIGCF_PRESENT);
             var comports = new DeviceInformationSet(GUID_DEVINTERFACE_COMPORT, DiGetClassFlags.DIGCF_DEVICEINTERFACE | DiGetClassFlags.DIGCF_PRESENT).Devices;
             var modems = new DeviceInformationSet(GUID_DEVINTERFACE_MODEM, DiGetClassFlags.DIGCF_DEVICEINTERFACE | DiGetClassFlags.DIGCF_PRESENT).Devices;
-            var modem_comports = comports.Where(port => port.GetInterface(GUID_DEVINTERFACE_MODEM) != null);
+            var modem_comports = comports.Where(port => port.GetInterfaces(GUID_DEVINTERFACE_MODEM).Any());
         }
 #if false
         static void PinvokeSample()

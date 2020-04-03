@@ -4,31 +4,42 @@ using System.Linq;
 using System.Text;
 using System.Runtime.InteropServices;
 
-namespace Win32.Devices
+namespace Win32
 {
     public class DeviceInformationSet : IDisposable
     {
-        public IntPtr Handle { get; private set; }
-        private Guid classGuid;
+        public HDevInfo HDevInfo { get; }
+        public Guid? Guid { get; }
+        public string Enumerator { get; }
+        public HWnd? Parent { get; }
+        public DiGetClassFlags Flags { get; }
 
-        public DeviceInformationSet(string enumerator, IntPtr parent, DiGetClassFlags flags)
+        public DeviceInformationSet(Guid? guid, string enumerator, HWnd? parent, DiGetClassFlags flags)
         {
-            Handle = SetupDi.GetClassDevs(enumerator, parent, flags);
-        }
-
-        public DeviceInformationSet(Guid guid, string enumerator, IntPtr parent, DiGetClassFlags flags)
-        {
-            classGuid = guid;
-            Handle = SetupDi.GetClassDevs(guid, enumerator, parent, flags);
+            Guid = guid;
+            Enumerator = enumerator;
+            Parent = parent;
+            Flags = flags;
+            HDevInfo = SetupDi.GetClassDevs(guid, enumerator, parent, flags);
         }
 
         public DeviceInformationSet(Guid guid, DiGetClassFlags flags)
-            : this(guid, null, IntPtr.Zero, flags)
+            : this(guid, null, null, flags)
+        {
+        }
+
+        public DeviceInformationSet(Guid guid)
+            : this(guid, null, null, 0)
         {
         }
 
         public DeviceInformationSet(DiGetClassFlags flags)
-            : this(null, IntPtr.Zero, flags)
+            : this(null, null, null, flags)
+        {
+        }
+
+        public DeviceInformationSet()
+            : this(null, null, null, DiGetClassFlags.DIGCF_ALLCLASSES)
         {
         }
 
@@ -39,7 +50,7 @@ namespace Win32.Devices
                 SP_DEVINFO_DATA deviceInfo = new SP_DEVINFO_DATA();
                 deviceInfo.cbSize = Marshal.SizeOf(deviceInfo);
                 uint index = 0;
-                while (SetupDi.EnumDeviceInfo(Handle, index, ref deviceInfo))
+                while (SetupDi.EnumDeviceInfo(HDevInfo, index, ref deviceInfo))
                 {
                     yield return new DeviceInformation(this, deviceInfo);
                     index++;
@@ -52,25 +63,13 @@ namespace Win32.Devices
             SP_DEVICE_INTERFACE_DATA interfaceData = new SP_DEVICE_INTERFACE_DATA();
             interfaceData.cbSize = Marshal.SizeOf(interfaceData);
             uint index = 0;
-            while (SetupDi.EnumDeviceInterfaces(Handle, interfaceClassGuid, index, ref interfaceData))
+            while (SetupDi.EnumDeviceInterfaces(HDevInfo, interfaceClassGuid, index, ref interfaceData))
             {
                 yield return new DeviceInterface(this, interfaceData);
                 index++;
             }
         }
 
-        public IEnumerable<DeviceInterface> GetInterfaces(DeviceInformation device, Guid interfaceClassGuid)
-        {
-            SP_DEVICE_INTERFACE_DATA interfaceData = new SP_DEVICE_INTERFACE_DATA();
-            interfaceData.cbSize = Marshal.SizeOf(interfaceData);
-            uint index = 0;
-            var deviceInfo = device.DeviceInfo;
-            while (SetupDi.EnumDeviceInterfaces(Handle, deviceInfo, interfaceClassGuid, index, ref interfaceData))
-            {
-                yield return new DeviceInterface(this, interfaceData);
-                index++;
-            }
-        }
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
@@ -78,8 +77,8 @@ namespace Win32.Devices
         {
             if (!disposedValue)
             {
-                if (Handle == IntPtr.Zero)
-                    SetupDi.DestroyDeviceInfoList(Handle);
+                if (HDevInfo.IntPtr == IntPtr.Zero)
+                    SetupDi.DestroyDeviceInfoList(HDevInfo);
 
                 disposedValue = true;
             }
